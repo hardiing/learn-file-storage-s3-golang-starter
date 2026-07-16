@@ -1,11 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -49,12 +50,17 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Failed to parse Content-Type: %v", err)
 		return
 	}
+	extensions, err := mime.ExtensionsByType(mediaType)
+	if err != nil || len(extensions) == 0 {
+		respondWithError(w, http.StatusBadRequest, "No extensions found for media type: %v", err)
+		return
+	}
 
-	data, err := io.ReadAll(file)
+	/* data, err := io.ReadAll(file)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to read image data", err)
 		return
-	}
+	} */
 
 	videoMetadata, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -66,19 +72,20 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	//videoThumbnail := thumbnail{
-	//	data:      data,
-	//	mediaType: mediaType,
-	//}
+	filename := fmt.Sprintf("%s%s", videoIDString, extensions[0])
+	newFilePath := filepath.Join(cfg.assetsRoot, filename)
+	createdFile, err := os.Create(newFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error creating new file: %v", err)
+		return
+	}
+	_, err = io.Copy(createdFile, file)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error copying file: %v", err)
+		return
+	}
+	dataURL := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, filename)
 
-	encodedData := base64.StdEncoding.EncodeToString(data)
-	//dataURL := "data:" + mediaType + ";base64," + encodedData
-	dataURL := fmt.Sprintf("data:%s;base64,%s", mediaType, encodedData)
-
-	//videoThumbnails[videoMetadata.ID] = videoThumbnail
-
-	//newThumbnail := "http://localhost:" + cfg.port + "/api/thumbnails/" + videoIDString
-	//videoMetadata.ThumbnailURL = &newThumbnail
 	videoMetadata.ThumbnailURL = &dataURL
 
 	err = cfg.db.UpdateVideo(videoMetadata)
