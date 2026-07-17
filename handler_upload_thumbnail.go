@@ -46,6 +46,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	rawContentType := header.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(rawContentType)
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "File should be jpeg or png", err)
+		return
+	}
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Failed to parse Content-Type: %v", err)
 		return
@@ -55,12 +59,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "No extensions found for media type: %v", err)
 		return
 	}
-
-	/* data, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to read image data", err)
-		return
-	} */
 
 	videoMetadata, err := cfg.db.GetVideo(videoID)
 	if err != nil {
