@@ -57,7 +57,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	rawContentType := header.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(rawContentType)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Failed to parse Content-Type: %v", err)
+		respondWithError(w, http.StatusBadRequest, "Failed to parse Content-Type", err)
 		return
 	}
 	if mediaType != "video/mp4" {
@@ -67,7 +67,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	tempFile, err := os.CreateTemp("", "tubely-upload.mp4")
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error creating temp file: %v", err)
+		respondWithError(w, http.StatusBadRequest, "Error creating temp file", err)
 		return
 	}
 	defer os.Remove(tempFile.Name())
@@ -75,13 +75,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	_, err = io.Copy(tempFile, file)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error copying file: %v", err)
+		respondWithError(w, http.StatusBadRequest, "Error copying file", err)
 		return
 	}
 
 	_, err = tempFile.Seek(0, io.SeekStart)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error resetting to start of tempFile: %v", err)
+		respondWithError(w, http.StatusBadRequest, "Error resetting to start of tempFile", err)
 		return
 	}
 
@@ -90,6 +90,21 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	encodedString := hex.EncodeToString(key)
 	filename := fmt.Sprintf("%s.mp4", encodedString)
 
+	aspectRatio, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error getting video aspect ratio", err)
+		return
+	}
+
+	switch aspectRatio {
+	case "16:9":
+		filename = "landscape/" + filename
+	case "9:16":
+		filename = "portrait/" + filename
+	case "other":
+		filename = "other/" + filename
+	}
+
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &filename,
@@ -97,7 +112,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		ContentType: &mediaType,
 	})
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error putting object in bucket: %v", err)
+		respondWithError(w, http.StatusBadRequest, "Error putting object in bucket", err)
 		return
 	}
 
