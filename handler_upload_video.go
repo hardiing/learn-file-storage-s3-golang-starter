@@ -1,22 +1,17 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
-	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -130,7 +125,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	newUrl := fmt.Sprintf("%s,%s", cfg.s3Bucket, filename)
+	newUrl := fmt.Sprintf("%s/%s", cfg.s3CfDistribution, filename)
 	videoMetadata.VideoURL = &newUrl
 
 	err = cfg.db.UpdateVideo(videoMetadata)
@@ -139,13 +134,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	presignedVideo, err := cfg.dbVideoToSignedVideo(videoMetadata)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error getting signed video", err)
-		return
-	}
-
-	respondWithJSON(w, http.StatusOK, presignedVideo)
+	respondWithJSON(w, http.StatusOK, videoMetadata)
 }
 
 func processVideoForFastStart(filePath string) (string, error) {
@@ -158,39 +147,4 @@ func processVideoForFastStart(filePath string) (string, error) {
 	}
 
 	return outputPath, err
-}
-
-func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
-	ctx := context.Background()
-	presignClient := s3.NewPresignClient(s3Client)
-	obj, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &key}, s3.WithPresignExpires(expireTime))
-	if err != nil {
-		return "", err
-	}
-	return obj.URL, err
-}
-
-func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
-	splitUrl := make([]string, 2)
-	if video.VideoURL == nil {
-		return video, nil
-	}
-	if *video.VideoURL != "" {
-		if strings.Contains(*video.VideoURL, ",") {
-			splitUrl = strings.Split(*video.VideoURL, ",")
-		} else {
-			return video, errors.New("Video URL must have a comma")
-		}
-	} else {
-		return video, errors.New("No video URL found")
-	}
-
-	presignedUrl, err := generatePresignedURL(cfg.s3Client, splitUrl[0], splitUrl[1], time.Hour)
-	if err != nil {
-		return video, err
-	}
-
-	video.VideoURL = &presignedUrl
-
-	return video, err
 }
